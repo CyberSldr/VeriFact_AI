@@ -4,7 +4,6 @@ import time
 from google import genai
 
 # --- CONFIGURATION ---
-# Fetches key from .streamlit/secrets.toml (Local) or Streamlit Settings (Cloud)
 try:
     GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
     client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -21,7 +20,6 @@ st.info("Paste a headline or social media claim below to verify its accuracy.")
 
 # --- HELPER FUNCTIONS ---
 def get_fact_check(query):
-    """Queries the Google Fact Check Tools API."""
     url = f"https://factchecktools.googleapis.com/v1alpha1/claims:search?query={query}&key={GOOGLE_API_KEY}"
     try:
         res = requests.get(url).json()
@@ -30,7 +28,6 @@ def get_fact_check(query):
         return []
 
 def stream_text(text):
-    """Simulates a typing effect for the AI response."""
     for word in text.split(" "):
         yield word + " "
         time.sleep(0.02)
@@ -46,9 +43,7 @@ if st.button("Verify Claim", type="primary"):
     if not user_input.strip():
         st.warning("Please enter a claim first!")
     else:
-        # 1. Start the Status UI
         with st.status("🔍 Verifying Claim...", expanded=True) as status:
-            
             st.write("Step 1: Searching global fact-check databases...")
             claims = get_fact_check(user_input)
             
@@ -62,39 +57,42 @@ if st.button("Verify Claim", type="primary"):
                 "Keep it concise but detailed."
             )
             
-            try:
-                # Call the Gemini 3 model
-                response = client.models.generate_content(
-                    model='gemini-3-flash-preview',
-                    contents=prompt
-                )
-                ai_text = response.text
-                status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
-            except Exception as e:
-                status.update(label="❌ AI Analysis Failed", state="error")
-                st.error(f"Error: {e}")
-                st.stop()
+            ai_text = ""
+            max_retries = 3
+            for i in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-3-flash-preview',
+                        contents=prompt
+                    )
+                    ai_text = response.text
+                    status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
+                    break 
+                except Exception as e:
+                    if "503" in str(e) and i < max_retries - 1:
+                        st.write(f"⚠️ Server busy, retrying in {i+2} seconds...")
+                        time.sleep(i + 2)
+                        continue
+                    else:
+                        status.update(label="❌ AI Analysis Failed", state="error")
+                        st.error(f"Error: {e}")
+                        st.stop()
 
         # --- DISPLAY RESULTS ---
         st.divider()
-        
         if claims:
             st.success("### ✅ Database Match Found")
             c = claims[0]
             review = c["claimReview"][0]
-            
-            # Using columns for a cleaner look
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Official Rating", review['textualRating'].upper())
             with col2:
                 st.write(f"**Verified by:** {review['publisher']['name']}")
-            
             st.write(f"**The Claim:** {c['text']}")
             st.link_button("Read Full Fact-Check Report", review['url'])
             st.divider()
 
-        # Display Streaming AI Analysis
         st.subheader("🤖 AI Credibility Report")
         st.write_stream(stream_text(ai_text))
 
