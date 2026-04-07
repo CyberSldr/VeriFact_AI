@@ -1,9 +1,12 @@
+import os
+import streamlit as st
 import streamlit as st
 import requests
 from google import genai
 
 # --- CONFIGURATION ---
-GOOGLE_API_KEY = "AIzaSyCSawr8hqLV5H5AHb7xWHuV4fqqixEOkt4"
+# This looks for a secret called "GOOGLE_API_KEY"
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
 # --- APP STYLING ---
